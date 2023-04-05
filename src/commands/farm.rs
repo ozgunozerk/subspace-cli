@@ -20,6 +20,8 @@ use crate::utils::{install_tracing, raise_fd_limit};
 /// allows us to detect multiple instances of the farmer and act on it
 pub(crate) const SINGLE_INSTANCE: &str = ".subspaceFarmer";
 
+type SubscriptionHandles = Option<(JoinHandle<Result<()>>, JoinHandle<Result<()>>)>;
+
 /// implementation of the `farm` command
 ///
 /// takes `is_verbose`, returns a [`Farmer`], [`Node`], and a [`SingleInstance`]
@@ -104,36 +106,20 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
 
 #[instrument]
 async fn wait_on_farmer(
-    maybe_handles: Option<(JoinHandle<Result<()>>, JoinHandle<Result<()>>)>,
+    maybe_handles: SubscriptionHandles,
     farmer: Arc<Farmer>,
     node: Arc<Node>,
 ) -> Result<()> {
     // node subscription can be gracefully closed with `ctrl_c` without any problem
     // (no code needed). We need graceful closing for farmer subscriptions.
-    if let Some((plotting_handle, solution_handle)) = maybe_handles {
-        tokio::select! {
-            _ = signal::ctrl_c() => {
-               println!(
-                    "\nWill try to gracefully exit the application now. Please wait for a couple of seconds... If you press ctrl+c again, it will \
-                    try to forcefully close the app!"
-                );
-                plotting_handle.abort();
-                solution_handle.abort();
-            }
-            res = solution_handle => {
-                // first level is join handle, second layer is actual result from the task
-                match res {
-                    Ok(Ok(())) => unreachable!("solution subscription never ends"),
-                    Ok(Err(err)) => return Err(eyre!("solution subscription crashed with err: {err}")),
-                    Err(err) => return Err(eyre!("couldn't join subscription handle with err: {err:?}"))
-                }
-            }
-            // cannot inspect plotting subscription for errors, since it may end and quit from
-            // `tokio::select`
-        }
-    } else {
-        // if there are not subscriptions, just wait on the kill signal
-        signal::ctrl_c().await?;
+    println!(
+        "\nWill try to gracefully exit the application now. Please wait for a couple of \
+         seconds... If you press ctrl+c again, it will try to forcefully close the app!"
+    );
+
+    if let Some((plotting_handle, solution_handle)) = maybe_handles.as_ref() {
+        plotting_handle.abort();
+        solution_handle.abort();
     }
 
     // shutting down the farmer and the node
@@ -151,7 +137,11 @@ async fn wait_on_farmer(
             .close()
             .await
             .expect("cannot close farmer");
-        node.close().await.expect("cannot close node");
+        Arc::try_unwrap(node)
+            .expect("there should have been only 1 strong node counter")
+            .close()
+            .await
+            .expect("cannot close node");
     });
 
     tokio::select! {
@@ -240,10 +230,6 @@ async fn subscribe_to_solutions(
     reward_address: PublicKey,
 ) -> Result<()> {
     println!();
-    let farmed_blocks = summary
-        .get_farmed_block_count()
-        .await
-        .context("couldn't read farmed blocks count from summary");
 
     //let is_initial_progress_finished = &is_initial_progress_finished;
 
@@ -252,8 +238,7 @@ async fn subscribe_to_solutions(
         .await
         .map_err(|err| eyre!("couldn't subscribe to new blocks, because: {err}"))?;
     while let Some(new_block) = new_blocks.next().await {
-        let mut summary_update_values: SummaryUpdateFields =
-            SummaryUpdateFields { ..Default::default() };
+        let mut summary_update_values: SummaryUpdateFields = Default::default();
 
         let events = node
             .get_events(Some(new_block.hash))
