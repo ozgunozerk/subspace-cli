@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use color_eyre::eyre::{eyre, Context, Report, Result};
@@ -44,6 +44,7 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
     raise_fd_limit();
 
     let Config { chain, farmer: farmer_config, node: mut node_config } = validate_config()?;
+    let reward_address = farmer_config.reward_address;
 
     // apply advanced options (flags)
     if executor {
@@ -52,8 +53,9 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
     }
 
     println!("Starting node ...");
-    let node =
-        node_config.build(chain.clone(), is_verbose).await.context("error building the node")?;
+    let node = Arc::new(
+        node_config.build(chain.clone(), is_verbose).await.context("error building the node")?,
+    );
     println!("Node started successfully!");
 
     if !matches!(chain, ChainConfig::Dev) {
@@ -67,8 +69,7 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
     let summary = Summary::new(Some(farmer_config.plot_size)).await?;
 
     println!("Starting farmer ...");
-    let farmer = farmer_config.build(&node).await?;
-    let farmer = Arc::new(farmer);
+    let farmer = Arc::new(farmer_config.build(&node).await?);
     println!("Farmer started successfully!");
 
     let maybe_handles = if !is_verbose {
@@ -85,9 +86,9 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
 
         let solution_sub_handle = tokio::spawn(subscribe_to_solutions(
             summary.clone(),
-            farmer.clone(),
+            node.clone(),
             is_initial_progress_finished.clone(),
-            farmer_config.reward_address,
+            reward_address,
         ));
 
         Some((plotting_sub_handle, solution_sub_handle))
@@ -103,29 +104,40 @@ pub(crate) async fn farm(is_verbose: bool, executor: bool) -> Result<()> {
 
 #[instrument]
 async fn wait_on_farmer(
-    maybe_handles: Option<(JoinHandle<()>, JoinHandle<()>)>,
+    maybe_handles: Option<(JoinHandle<Result<()>>, JoinHandle<Result<()>>)>,
     farmer: Arc<Farmer>,
-    node: Node,
+    node: Arc<Node>,
 ) -> Result<()> {
     // node subscription can be gracefully closed with `ctrl_c` without any problem
     // (no code needed). We need graceful closing for farmer subscriptions.
-
-    // TODO: handle also solution and plotting subscription errors here, while
-    // waiting for ctrl_c.
-    signal::ctrl_c().await?;
-    println!(
-        "\nWill try to gracefully exit the application now. If you press ctrl+c again, it will \
-         try to forcefully close the app!"
-    );
-
-    // closing the subscriptions if there are any
-    if let Some((plotting_handle, solution_handle)) = maybe_handles.as_ref() {
-        plotting_handle.abort();
-        solution_handle.abort();
+    if let Some((plotting_handle, solution_handle)) = maybe_handles {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+               println!(
+                    "\nWill try to gracefully exit the application now. Please wait for a couple of seconds... If you press ctrl+c again, it will \
+                    try to forcefully close the app!"
+                );
+                plotting_handle.abort();
+                solution_handle.abort();
+            }
+            res = solution_handle => {
+                // first level is join handle, second layer is actual result from the task
+                match res {
+                    Ok(Ok(())) => unreachable!("solution subscription never ends"),
+                    Ok(Err(err)) => return Err(eyre!("solution subscription crashed with err: {err}")),
+                    Err(err) => return Err(eyre!("couldn't join subscription handle with err: {err:?}"))
+                }
+            }
+            // cannot inspect plotting subscription for errors, since it may end and quit from
+            // `tokio::select`
+        }
+    } else {
+        // if there are not subscriptions, just wait on the kill signal
+        signal::ctrl_c().await?;
     }
 
     // shutting down the farmer and the node
-    let handle = tokio::spawn(async move {
+    let graceful_close_handle = tokio::spawn(async move {
         // if one of the subscriptions have not aborted yet, wait
         // Plotting might end, so we ignore result here
 
@@ -143,7 +155,7 @@ async fn wait_on_farmer(
     });
 
     tokio::select! {
-        _ = handle => println!("gracefully closed the app!"),
+        _ = graceful_close_handle => println!("gracefully closed the app!"),
         _ = signal::ctrl_c() => println!("\nforcefully closing the app!"),
     }
     Ok(())
@@ -215,7 +227,7 @@ async fn subscribe_to_plotting_progress(
     summary
         .update(SummaryUpdateFields { is_plotting_finished: true, ..Default::default() })
         .await
-        .context("couldn't update the summary");
+        .context("couldn't update the summary")?;
 
     Ok(())
 }
@@ -235,14 +247,18 @@ async fn subscribe_to_solutions(
 
     //let is_initial_progress_finished = &is_initial_progress_finished;
 
-    let mut new_blocks =
-        node.subscribe_new_blocks().await.context("couldn't subscribe to new blocks");
+    let mut new_blocks = node
+        .subscribe_new_blocks()
+        .await
+        .map_err(|err| eyre!("couldn't subscribe to new blocks, because: {err}"))?;
     while let Some(new_block) = new_blocks.next().await {
         let mut summary_update_values: SummaryUpdateFields =
             SummaryUpdateFields { ..Default::default() };
 
-        let events =
-            node.get_events(Some(new_block.hash)).await.context("couldn't get events from node");
+        let events = node
+            .get_events(Some(new_block.hash))
+            .await
+            .map_err(|err| eyre!("couldn't get events from node, because: {err}"))?;
 
         for event in events {
             // subscription is active when plotting is started, only print out rewards after
@@ -253,9 +269,10 @@ async fn subscribe_to_solutions(
                         RewardsEvent::VoteReward { voter: author, reward }
                         | RewardsEvent::BlockReward { block_author: author, reward },
                     ) if author == reward_address.into() =>
-                        summary_update_values.maybe_new_reward = reward,
-                    Event::Subspace(SubspaceEvent::FarmerVote { reward_address, .. })
-                        if author == reward_address.into() =>
+                        summary_update_values.maybe_new_reward = Some(reward),
+                    Event::Subspace(SubspaceEvent::FarmerVote {
+                        reward_address: author, ..
+                    }) if author == reward_address.into() =>
                         summary_update_values.is_new_vote = true,
                     _ => (),
                 }
@@ -275,15 +292,15 @@ async fn subscribe_to_solutions(
             summary
                 .get_farmed_block_count()
                 .await
-                .context("couldn't read farmed block count value, summary was corrupted"),
+                .context("couldn't read farmed block count value, summary was corrupted")?,
             summary
                 .get_vote_count()
                 .await
-                .context("couldn't read vote count value, summary was corrupted"),
+                .context("couldn't read vote count value, summary was corrupted")?,
             summary
                 .get_total_rewards()
                 .await
-                .context("couldn't read total rewards value, summary was corrupted"),
+                .context("couldn't read total rewards value, summary was corrupted")?,
         );
 
         if is_initial_progress_finished.load(Ordering::Relaxed) {
