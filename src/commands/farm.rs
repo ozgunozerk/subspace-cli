@@ -109,6 +109,9 @@ async fn wait_on_farmer(
 ) -> Result<()> {
     // node subscription can be gracefully closed with `ctrl_c` without any problem
     // (no code needed). We need graceful closing for farmer subscriptions.
+
+    // TODO: handle also solution and plotting subscription errors here, while
+    // waiting for ctrl_c.
     signal::ctrl_c().await?;
     println!(
         "\nWill try to gracefully exit the application now. If you press ctrl+c again, it will \
@@ -146,6 +149,7 @@ async fn wait_on_farmer(
     Ok(())
 }
 
+#[instrument]
 async fn subscribe_to_node_syncing(node: &Node) -> Result<()> {
     let mut syncing_progress = node
         .subscribe_syncing_progress()
@@ -170,12 +174,13 @@ async fn subscribe_to_node_syncing(node: &Node) -> Result<()> {
     Ok(())
 }
 
+#[instrument]
 async fn subscribe_to_plotting_progress(
     summary: Summary,
     farmer: Arc<Farmer>,
     is_initial_progress_finished: Arc<AtomicBool>,
     sector_size_bytes: u64,
-) {
+) -> Result<()> {
     for (plot_id, plot) in farmer.iter_plots().await.enumerate() {
         println!("Initial plotting for plot: #{plot_id} ({})", plot.directory().display());
 
@@ -207,32 +212,37 @@ async fn subscribe_to_plotting_progress(
         progress_bar.finish_with_message("Initial plotting finished!\n");
     }
     is_initial_progress_finished.store(true, Ordering::Relaxed);
-    let _ = summary
+    summary
         .update(SummaryUpdateFields { is_plotting_finished: true, ..Default::default() })
-        .await;
-    // ignore the error,
+        .await
+        .context("couldn't update the summary");
+
+    Ok(())
 }
 
+#[instrument]
 async fn subscribe_to_solutions(
     summary: Summary,
     node: Arc<Node>,
     is_initial_progress_finished: Arc<AtomicBool>,
     reward_address: PublicKey,
-) {
+) -> Result<()> {
     println!();
     let farmed_blocks = summary
         .get_farmed_block_count()
         .await
-        .expect("couldn't read farmed blocks count from summary");
+        .context("couldn't read farmed blocks count from summary");
 
     //let is_initial_progress_finished = &is_initial_progress_finished;
 
-    let mut new_blocks = node.subscribe_new_blocks().await?;
+    let mut new_blocks =
+        node.subscribe_new_blocks().await.context("couldn't subscribe to new blocks");
     while let Some(new_block) = new_blocks.next().await {
         let mut summary_update_values: SummaryUpdateFields =
             SummaryUpdateFields { ..Default::default() };
 
-        let events = node.get_events(Some(new_block.hash)).await?;
+        let events =
+            node.get_events(Some(new_block.hash)).await.context("couldn't get events from node");
 
         for event in events {
             // subscription is active when plotting is started, only print out rewards after
@@ -262,36 +272,35 @@ async fn subscribe_to_solutions(
                                                              // abandon this
                                                              // mechanism
         let (farmed_block_count, vote_count, total_rewards) = (
-            summary.get_farmed_block_count().await?,
-            summary.get_vote_count().await?,
-            summary.get_total_rewards().await?,
+            summary
+                .get_farmed_block_count()
+                .await
+                .context("couldn't read farmed block count value, summary was corrupted"),
+            summary
+                .get_vote_count()
+                .await
+                .context("couldn't read vote count value, summary was corrupted"),
+            summary
+                .get_total_rewards()
+                .await
+                .context("couldn't read total rewards value, summary was corrupted"),
         );
-    }
 
-    for plot in farmer.iter_plots().await {
-        plot.subscribe_new_solutions()
-            .await
-            .for_each(|solutions| {
-                let summary = summary.clone();
-                async move {
-                    if !solutions.solutions.is_empty() {
-                        //let _ = summary.update(None, Some(total_farmed)).await; // ignore the
-                        // error, since we will abandon this mechanism
-                        if is_initial_progress_finished.load(Ordering::Relaxed) {
-                            print!("\rYou have farmed {total_farmed} block(s) in total!");
-                            // use
-                            // carriage return to overwrite the current value
-                            // instead of inserting
-                            // a new line
-                            std::io::stdout().flush().expect("Failed to flush stdout");
-                            // flush the
-                            // stdout to make sure values are printed
-                        }
-                    }
-                }
-            })
-            .await;
+        if is_initial_progress_finished.load(Ordering::Relaxed) {
+            print!(
+                "\rYou have earned: {total_rewards} SSC(s), farmed {farmed_block_count} block(s), \
+                 and voted on {vote_count} block(s)!"
+            );
+            // use
+            // carriage return to overwrite the current value
+            // instead of inserting
+            // a new line
+            std::io::stdout().flush().expect("Failed to flush stdout");
+            // flush the
+            // stdout to make sure values are printed
+        }
     }
+    Ok(())
 }
 
 /// nice looking progress bar for the initial plotting :)
