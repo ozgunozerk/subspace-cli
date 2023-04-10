@@ -53,9 +53,10 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 
-[profile.linuxtest]
-inherits = "release"
-codegen-units = 1
+# this works
+# [profile.linuxtest]
+# inherits = "release"
+# codegen-units = 1
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
 # that are suspected to be CPU-intensive, and that are unlikely to require debugging (as some of

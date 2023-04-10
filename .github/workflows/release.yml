@@ -27,7 +27,7 @@ jobs:
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            rustflags: "-C linker=aarch64-linux-gnu-gcc"
+            rustflags: "-C linker=aarch64-linux-gnu-gcc -C lto=thin"
           # - os: macos-12
           #   target: x86_64-apple-darwin
           #   suffix: macos-x86_64-${{ github.ref_name }}
@@ -48,7 +48,7 @@ jobs:
     runs-on: ${{ matrix.build.os }}
 
     env:
-      PRODUCTION_TARGET: target/${{ matrix.build.target }}/linuxtest
+      PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
       RUSTFLAGS: ${{ matrix.build.rustflags }} --cfg tokio_unstable
 
     steps:
@@ -80,7 +80,7 @@ jobs:
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile linuxtest --bin subspace-cli
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
 
       - name: Sign Application (macOS)
         run: |

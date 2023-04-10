@@ -24,25 +24,25 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
-      - name: Get release by Tag for manual run
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        id: manual_release_info
-        uses: cardinalby/git-get-release-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          commitSha: ${{ github.sha }}
-          prerelease: false
-      - name: Get release by Tag for release run
-        if: ${{ github.event_name == 'workflow_run' }}
-        id: release_info
-        uses: cardinalby/git-get-release-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          commitSha: ${{ github.event.workflow_run.head_sha }}
-          prerelease: false
-          latest: true
+      # - name: Get release by Tag for manual run
+      #   if: ${{ github.event_name == 'workflow_dispatch' }}
+      #   id: manual_release_info
+      #   uses: cardinalby/git-get-release-action@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     commitSha: ${{ github.sha }}
+      #     prerelease: false
+      # - name: Get release by Tag for release run
+      #   if: ${{ github.event_name == 'workflow_run' }}
+      #   id: release_info
+      #   uses: cardinalby/git-get-release-action@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     commitSha: ${{ github.event.workflow_run.head_sha }}
+      #     prerelease: false
+      #     latest: true
       - name: print various info
         run: echo ${{ github.event.workflow_run.event }} && echo "\n {{ github.event.workflow_run.actor }}" && echo "\n {{ github.event.workflow_run.triggering_actor }}"
       # - name: Send Discord Message
