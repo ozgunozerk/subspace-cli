@@ -88,7 +88,7 @@ jobs:
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
         with:
           command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile release --bin subspace-cli
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
 
       - name: Sign Application (macOS)
         run: |
