@@ -7,6 +7,10 @@ on:
     tags:
       - "*"
 
+# Incremental compilation here isn't helpful
+env:
+  CARGO_INCREMENTAL: 0
+
 jobs:
   executables:
     strategy:
