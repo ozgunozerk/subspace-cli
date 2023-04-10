@@ -16,34 +16,34 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ubuntu-20.04
-            target: x86_64-unknown-linux-gnu
-            suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: ubuntu-20.04
-            target: x86_64-unknown-linux-gnu
-            suffix: ubuntu-x86_64-v3-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v3'
+          # - os: ubuntu-20.04
+          #   target: x86_64-unknown-linux-gnu
+          #   suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
+          #   rustflags: "-C target-cpu=x86-64-v2"
+          # - os: ubuntu-20.04
+          #   target: x86_64-unknown-linux-gnu
+          #   suffix: ubuntu-x86_64-v3-${{ github.ref_name }}
+          #   rustflags: "-C target-cpu=x86-64-v3"
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            rustflags: "-C linker=aarch64-linux-gnu-gcc"
-          - os: macos-12
-            target: x86_64-apple-darwin
-            suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ""
-          - os: macos-12
-            target: aarch64-apple-darwin
-            suffix: macos-aarch64-${{ github.ref_name }}
-            rustflags: ""
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            suffix: windows-x86_64-v3-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v3'
+            rustflags: "-C linker=aarch64-linux-gnu-gcc -C codegen-units=1"
+          # - os: macos-12
+          #   target: x86_64-apple-darwin
+          #   suffix: macos-x86_64-${{ github.ref_name }}
+          #   rustflags: ""
+          # - os: macos-12
+          #   target: aarch64-apple-darwin
+          #   suffix: macos-aarch64-${{ github.ref_name }}
+          #   rustflags: ""
+          # - os: windows-2022
+          #   target: x86_64-pc-windows-msvc
+          #   suffix: windows-x86_64-v2-${{ github.ref_name }}
+          #   rustflags: "-C target-cpu=x86-64-v2"
+          # - os: windows-2022
+          #   target: x86_64-pc-windows-msvc
+          #   suffix: windows-x86_64-v3-${{ github.ref_name }}
+          #   rustflags: "-C target-cpu=x86-64-v3"
 
     runs-on: ${{ matrix.build.os }}
 
@@ -78,9 +78,17 @@ jobs:
 
       - name: Build the executable
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
+        if: matrix.build.target != 'aarch64-unknown-linux-gnu'
         with:
           command: build
           args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
+
+      - name: Build the executable (release for aarch64 linux)
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
+        if: matrix.build.target == 'aarch64-unknown-linux-gnu'
+        with:
+          command: build
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile release --bin subspace-cli
 
       - name: Sign Application (macOS)
         run: |
