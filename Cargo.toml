@@ -53,7 +53,7 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 
-[target.'cfg(all(target_arch = "x86_64", target_vendor = "unknown", target_os = "linux", target_env = "gnu"))'.profile.production]
+[target.'cfg(all(target_arch = "aarch64", target_vendor = "unknown", target_os = "linux"))'.profile.production]
 lto = "false"
 
 # The list of dependencies below (which can be both direct and indirect dependencies) are crates
