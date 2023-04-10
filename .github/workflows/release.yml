@@ -27,7 +27,7 @@ jobs:
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            rustflags: "-C linker=aarch64-linux-gnu-gcc -C codegen-units=1"
+            rustflags: "-C linker=aarch64-linux-gnu-gcc"
           # - os: macos-12
           #   target: x86_64-apple-darwin
           #   suffix: macos-x86_64-${{ github.ref_name }}
@@ -78,14 +78,6 @@ jobs:
 
       - name: Build the executable
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        if: matrix.build.target != 'aarch64-unknown-linux-gnu'
-        with:
-          command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
-
-      - name: Build the executable (release for aarch64 linux)
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        if: matrix.build.target == 'aarch64-unknown-linux-gnu'
         with:
           command: build
           args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
