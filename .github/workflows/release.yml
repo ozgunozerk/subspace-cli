@@ -72,17 +72,11 @@ jobs:
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
 
-      - name: AArch64 cross-compile packages
+      - name: Linux AArch64 cross-compile packages
         run: sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
-      - name: Build the executable
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
-        with:
-          command: build
-          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
-
-      - name: Build the executable
+      - name: Build the executable (other than aarch64 linux)
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         if: matrix.build.target != 'aarch64-unknown-linux-gnu'
         with:
@@ -90,7 +84,7 @@ jobs:
           args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-cli
 
       # TODO: get rid of this when we have bigger RAM for aarch64 linux
-      - name: Build the executable for aarch64 separately
+      - name: Build the executable for aarch64 linux separately
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
         with:
