@@ -5,7 +5,7 @@ name: Send Release Messages
 
 on:
   workflow_run:
-    workflows: ["release"]
+    workflows: ["discord"]
     types:
       - completed
   workflow_dispatch:

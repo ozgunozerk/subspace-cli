@@ -1,0 +1,26 @@
+# This action enables building the executables for cli, can be triggered manually or by release creation.
+name: discord
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  executables:
+    strategy:
+      matrix:
+        build:
+          - os: ubuntu-20.04
+
+    runs-on: ${{ matrix.build.os }}
+
+
+
+    steps:
+      - name: Checkout
+        run: |
+          echo "successful"
+
+
