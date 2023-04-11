@@ -44,7 +44,10 @@ jobs:
       #     prerelease: false
       #     latest: true
       - name: print various info
-        run: echo ${{ github.event.workflow_run.event }} && echo "\n {{ github.event.workflow_run.actor }}" && echo "\n {{ github.event.workflow_run.triggering_actor }}"
+        run: |
+          echo ${{ github.event.workflow_run.event }}
+          echo "\n {{ github.event.workflow_run.actor }}"
+          echo "\n {{ github.event.workflow_run.triggering_actor }}"
       # - name: Send Discord Message
       #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && github.event.workflow_run.head_branch ==  steps.release_info.outputs.tag_name}}
       #   env:
