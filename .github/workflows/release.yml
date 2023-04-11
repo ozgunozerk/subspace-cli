@@ -99,6 +99,7 @@ jobs:
 
       # TODO: get rid of this when we have bigger RAM for aarch64 linux
       - name: Rename the aarch64 linux target folder to `production` for compatibility
+        if: matrix.build.target == 'aarch64-unknown-linux-gnu'
         run: |
           mv target/${{ matrix.build.target }}/aarch64linux ${{ env.PRODUCTION_TARGET }}
 
