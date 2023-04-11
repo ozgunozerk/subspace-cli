@@ -5,7 +5,7 @@ name: Send Release Messages
 
 on:
   workflow_run:
-    workflows: ["discord"]
+    workflows: ["release"]
     types:
       - completed
   workflow_dispatch:
@@ -22,51 +22,46 @@ on:
 jobs:
   send_message:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ( github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != "workflow_dispatch" ) || github.event_name == 'workflow_dispatch'
     steps:
-      # - name: Get release by Tag for manual run
-      #   if: ${{ github.event_name == 'workflow_dispatch' }}
-      #   id: manual_release_info
-      #   uses: cardinalby/git-get-release-action@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     commitSha: ${{ github.sha }}
-      #     prerelease: false
-      # - name: Get release by Tag for release run
-      #   if: ${{ github.event_name == 'workflow_run' }}
-      #   id: release_info
-      #   uses: cardinalby/git-get-release-action@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     commitSha: ${{ github.event.workflow_run.head_sha }}
-      #     prerelease: false
-      #     latest: true
-      - name: print various info
-        run: |
-          echo ${{ github.event.workflow_run.event }}
-          echo "\n {{ github.event.workflow_run.actor }}"
-          echo "\n {{ github.event.workflow_run.triggering_actor }}"
-      # - name: Send Discord Message
-      #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && github.event.workflow_run.head_branch ==  steps.release_info.outputs.tag_name}}
-      #   env:
-      #     DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      #   uses: Ilshidur/action-discord@master
-      #   with:
-      #     args: |
-      #       ${{ steps.release_info.outputs.tag_name || steps.manual_release_info.outputs.tag_name }} of ${{ github.repository }} has been released!
+      - name: Get release by Tag for manual run
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        id: manual_release_info
+        uses: cardinalby/git-get-release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commitSha: ${{ github.sha }}
+          prerelease: false
+      - name: Get release by Tag for release run
+        if: ${{ github.event_name == 'workflow_run' }}
+        id: release_info
+        uses: cardinalby/git-get-release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commitSha: ${{ github.event.workflow_run.head_sha }}
+          prerelease: false
+          latest: true
+      - name: Send Discord Message
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && github.event.workflow_run.head_branch ==  steps.release_info.outputs.tag_name}}
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        uses: Ilshidur/action-discord@master
+        with:
+          args: |
+            ${{ steps.release_info.outputs.tag_name || steps.manual_release_info.outputs.tag_name }} of ${{ github.repository }} has been released!
 
-      #       *Release Name:**
-      #       ```
-      #       ${{ steps.release_info.outputs.name || steps.manual_release_info.outputs.name }}
-      #       ```
+            *Release Name:**
+            ```
+            ${{ steps.release_info.outputs.name || steps.manual_release_info.outputs.name }}
+            ```
 
-      #       *Release Description:**
-      #       ```
-      #       ${{ steps.release_info.outputs.body || steps.manual_release_info.outputs.body }}
-      #       ```
-      #       Read more at: ${{ steps.release_info.outputs.html_url || steps.manual_release_info.outputs.html_url }}
+            *Release Description:**
+            ```
+            ${{ steps.release_info.outputs.body || steps.manual_release_info.outputs.body }}
+            ```
+            Read more at: ${{ steps.release_info.outputs.html_url || steps.manual_release_info.outputs.html_url }}
 
-      #       You can also update by visiting our docs at:
-      #       https://docs.subspace.network/docs/protocol/cli
+            You can also update by visiting our docs at:
+            https://docs.subspace.network/docs/protocol/cli
